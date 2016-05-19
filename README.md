@@ -4,8 +4,8 @@
   - [Introducción](#introduccion)
   - [Configuración de replica](#configuracion-de-replica)
   - [Elección del primario](#eleccion-del-primario)
-  - [Recuperación de fallos](#recuperacion-de-fallos)
   - [Configuración de escritura](#configuracion-de-escritura)
+  - [Recuperación de fallos](#recuperacion-de-fallos)
 
 ## Introducción
 
@@ -83,6 +83,109 @@ Dado que para este caso no se va a necesitar un árbitro vamos a eliminarlo de l
 
 ## Elección del primario
 
-## Recuperación de fallos
+¿Qué pasa cuando el servidor primario se cae? Esto activa una votación en los otros servidores, en el caso de prueba salió como ganador el del puerto 27002, como se ve a continuación.
+
+```
+z:SECONDARY> db.isMaster()
+{
+	"hosts" : [
+		"192.168.0.4:27001",
+		"192.168.0.4:27002",
+		"192.168.0.4:27003"
+	],
+	"setName" : "z",
+	"setVersion" : 5,
+	"ismaster" : false,
+	"secondary" : true,
+	"primary" : "192.168.0.4:27002",
+	"me" : "192.168.0.4:27001",
+	"maxBsonObjectSize" : 16777216,
+	"maxMessageSizeBytes" : 48000000,
+	"maxWriteBatchSize" : 1000,
+	"localTime" : ISODate("2016-05-19T13:33:37.272Z"),
+	"maxWireVersion" : 4,
+	"minWireVersion" : 0,
+	"ok" : 1
+}
+```
+
+Las elecciones por defecto son estocásticas, ya que la selección del nuevo primario será por el primero en responder, pero si por algún motivo se desea específicamente un orden de elección se modifica la prioridad de estos
+
+```
+z:SECONDARY> rs.config()
+{
+	"_id" : "z",
+	"version" : 5,
+	"protocolVersion" : NumberLong(1),
+	"members" : [
+		{
+			"_id" : 0,
+			"host" : "192.168.0.4:27001",
+			"arbiterOnly" : false,
+			"buildIndexes" : true,
+			"hidden" : false,
+			"priority" : 1,
+			"tags" : {
+
+			},
+			"slaveDelay" : NumberLong(0),
+			"votes" : 1
+		},
+		{
+			"_id" : 1,
+			"host" : "192.168.0.4:27002",
+			"arbiterOnly" : false,
+			"buildIndexes" : true,
+			"hidden" : false,
+			"priority" : 1,
+			"tags" : {
+
+			},
+			"slaveDelay" : NumberLong(0),
+			"votes" : 1
+		},
+		{
+			"_id" : 2,
+			"host" : "192.168.0.4:27003",
+			"arbiterOnly" : false,
+			"buildIndexes" : true,
+			"hidden" : false,
+			"priority" : 1,
+			"tags" : {
+
+			},
+			"slaveDelay" : NumberLong(0),
+			"votes" : 1
+		}
+	],
+	"settings" : {
+		"chainingAllowed" : true,
+		"heartbeatIntervalMillis" : 2000,
+		"heartbeatTimeoutSecs" : 10,
+		"electionTimeoutMillis" : 10000,
+		"getLastErrorModes" : {
+
+		},
+		"getLastErrorDefaults" : {
+			"w" : 1,
+			"wtimeout" : 0
+		},
+		"replicaSetId" : ObjectId("573db7db8f1de2c90c7910b4")
+	}
+}
+```
+
+Cada objeto en la lista `members` tiene un elemento `priority`, el cual especifica cual es la mejor opción para la elección del primario en unas votaciones
+
+```
+> var conf = rs.config()
+> conf.members[0].priority = 2
+> conf.members[2].priority = 0
+> rs.reconfig(conf)
+```
+
+Esto no solo hace que el primer servidor sea el preferido, si no que además prohibe que el tercer servidor pueda volverse primario. También el comando `rs.reconfig()` hace que el primario renuncie momentaneamente, por lo que se inicia una votación, esto puede durar entre 10 y 20 segundos.
 
 ## Configuración de escritura
+
+## Recuperación de fallos
