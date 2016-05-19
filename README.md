@@ -4,7 +4,7 @@
   - [Introducción](#introduccion)
   - [Configuración de replica](#configuracion-de-replica)
   - [Elección del primario](#eleccion-del-primario)
-  - [Configuración de escritura](#configuracion-de-escritura)
+  - [Configuración de escritura y lectura](#configuracion-de-escritura-y-lectura)
   - [Recuperación de fallos](#recuperacion-de-fallos)
 
 ## Introducción
@@ -186,6 +186,86 @@ Cada objeto en la lista `members` tiene un elemento `priority`, el cual especifi
 
 Esto no solo hace que el primer servidor sea el preferido, si no que además prohibe que el tercer servidor pueda volverse primario. También el comando `rs.reconfig()` hace que el primario renuncie momentaneamente, por lo que se inicia una votación, esto puede durar entre 10 y 20 segundos.
 
-## Configuración de escritura
+## Configuración de escritura y lectura
+
+Por defecto todas las operaciones se hacen sobre el primario, tanto las de lectura como las de escritura. Para leer desde un secundario solo es necesario hacer `rs.slaveOk()`, veamos un ejemplo
+
+```
+z:PRIMARY> use test
+z:PRIMARY> db.beer.insert({"looks", "good"})
+ ...
+z:SECONDARY> db.beer.findOne()
+Error: listCollections failed: { "ok" : 0, "errmsg" : "not master and slaveOk=false", "code" : 13435 }
+z:SECONDARY> rs.slaveOk()
+z:SECONDARY> db.beer.findOne()
+{ "_id" : ObjectId("573dcb52cc6e6ab7071ded0b"), "looks" : "good" }
+```
+
+### Read preferences
+
+Ya habilitada la lectura, se puede configurar la forma en la que un driver se conectará al set, teniendo como posibles opciones
+
+  - __primary__: Tratará de leer del primario, nunca de algún secundario
+  - __primaryPreferred__: Tratará de leer del primario, si falla toma algún secundario
+  - __secondary__: Tratará de leer de algún secundario, nunca del primario
+  - __secondaryPreferred__: Tratará de leer del secundario, si falla tomará del primario
+  - __nearest__: Busca el servidor más cercano, sin importar si es primario o secundario
+
+Un ejemplo es
+
+```js
+var Db = require('mongodb').Db,
+    ReplSet = require('mongodb').ReplSet,
+    Server = require('mongodb').Server,
+    ReadPreference = require('mongodb').ReadPreference,
+    test = require('assert');
+// Connect using ReplSet
+var server = new Server('localhost', 27017);
+var db = new Db('test', new ReplSet([server]));
+db.open(function(err, db) {
+    test.equal(null, err);
+    // Perform a read
+    var cursor = db.collection('t').find({});
+    cursor.setReadPreference(ReadPreference.PRIMARY);
+    cursor.toArray(function(err, docs) {
+        test.equal(null, err);
+        db.close();
+    });
+});
+```
+
+### Write concerns
+
+Aunque solo se puede escribir en el primario, hay formas de controlar lo que se escribe en los secundarios, para esto se usa la siguiente sintaxis
+
+```
+> db.collection.insert({ ... }, { w: <value>, j: <boolean>, wtimeout: <number> })
+```
+
+  - __w__: solicita confirmación sobre la cantidad de nodos propagados
+  - __j__: solicita confirmación sobre la escritura en el journal de la mayoría de nodos
+  - __wtimeout__: especifíca el máximo tiempo de respuesta en milisegundos, para un valor de w mayor a 1
+
+Para los posibles valores de `w` se tienen las siguientes posibilidades
+
+  - `w: 0` -> solo se genera reporte de errores en sockets o redes
+  - `w: 1` -> confirma la escritura en el servidor primario
+  - `w`: _n_ -> confirma la escritura en el servidor primario y en _n - 1_ servidores secundarios, esto se puede usar para saber si se replicó en todos los servidores
+  - `w: "majority"` -> confirma la escritura en la mayoría de servidores del replica set (para la versión 3.2 obliga a que `j: true`)
+
+Un ejemplo de esto sería:
+
+```
+> db.beer.insert({"hi":true}, {w:'majority'})
+```
+
+Para poner estos valores por defecto se usa un viejo truco
+
+```js
+> var cfg = rs.conf()
+> cfg.settings = {}
+> cfg.settings.getLastErrorDefaults = { w: "majority", wtimeout: 5000 }
+> rs.reconfig(cfg)
+```
 
 ## Recuperación de fallos
