@@ -261,7 +261,7 @@ Un ejemplo de esto sería:
 
 Para poner estos valores por defecto se usa un viejo truco
 
-```js
+```
 > var cfg = rs.conf()
 > cfg.settings = {}
 > cfg.settings.getLastErrorDefaults = { w: "majority", wtimeout: 5000 }
@@ -269,3 +269,15 @@ Para poner estos valores por defecto se usa un viejo truco
 ```
 
 ## Recuperación de fallos
+
+Es posible que mientras se estaba haciendo una operación de escritura el servidor primario se haya caido, por lo que no se haya alcanzado a enviar estas copias a las replicas, o se da el caso también que un servidor estuvo un tiempo sin conección y está desactualizado. Para estos dos casos MongoDB presenta un control y solución de esto.
+
+Como dato curioso, desde la versión 3.2 se incluyó el parámetro `protocolVersion: 1`, en el cual permite configurar el tiempo de revisión de primarios en milisegundos usando `electionTimeoutMillis`. Esto permite detectar de forma pronta si hay primarios simultaneos y recuperarse pronto a una falla de primario.
+
+### Rollback
+
+Cuando ningún servidor primario tiene operaciones que no se han enviado a nunguno de sus replicas y es desconectado, en el momento en que vuelve a conectarse a la red esas operaciones son archivadas (tiene un límite de 300MB). Para tener control sobre esto es necesario el uso de write concern, donde en la mayoría de los casos se recomienda el valor __majority__.
+
+### Failover recovery
+
+Cuando un servidor se recupera de una falla y se reconecta a su replica set, es actualizado automáticamente, pero existe un tiempo para que esto pase.
