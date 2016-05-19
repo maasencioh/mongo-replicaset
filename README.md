@@ -3,8 +3,8 @@
 
   - [Introducción](#introduccion)
   - [Configuración de replica](#configuracion-de-replica)
-  - [Recuperación de fallos](#recuperacion-de-fallos)
   - [Elección del primario](#eleccion-del-primario)
+  - [Recuperación de fallos](#recuperacion-de-fallos)
   - [Configuración de escritura](#configuracion-de-escritura)
 
 ## Introducción
@@ -21,11 +21,68 @@ Por defecto, cuando el servidor primario no se comunica con los demás en 10 seg
 
 ## Configuración de replica
 
+Un grupo de 3 servidores proveen una buena redundancia para la mayoría de casos, además de aplicar una buena práctica de crear un número impar en el grupo, ya que esto asegura unas elecciones más sencillas. También se recomienda aislar físicamente lo mejor posible cada servidor, preferiblemente en diferentes datacenters en diferentes partes del mundo, de manera que sea más dificil que fallen todos al mismo tiempo. En caso de tener los servidores de esta forma se recomienda primero realizar pruebas de conectividad entre los servidores, configuración del firewall y pruebas del DNS.
 
-## Recuperación de fallos
+Para iniciar se deben iniciar los demonios con el nombre del replica set, este nombre debe ser único, así que si la aplicación usa varios replica sets, cada uno de estos debe ser diferente.
 
+```
+$ mkdir data
+$ mkdir data/z1
+$ mkdir data/z2
+$ mkdir data/z3
+$ mongod --port 27001 --dbpath data/z1 --replSet z
+```
+
+Luego desde la consola `mongo` se debe instanciar el replica set
+
+```
+> rs.initiate()
+```
+
+Para ver la configuración del replica set
+
+```
+> rs.conf()
+```
+
+Vamos a crear los otros 2 servidores en consolas aparte
+
+```
+$ mongod --port 27002 --dbpath data/z2 --replSet z
+$ mongod --port 27003 --dbpath data/z3 --replSet z
+```
+
+Luego se agregarían al replica set, para esto __se deben agregar desde el primario__ de la siguiente forma
+
+```
+> rs.add("192.168.0.4:27002")
+> rs.add("192.168.0.4:27003")
+> rs.status()
+> db.isMaster()
+```
+
+Para agregar un árbitro se instancia primero el servidor
+
+```
+$ mkdir data/arb
+$ mongod --port 27004 --dbpath data/arb --replSet z
+```
+
+Luego se agrega de forma similar que los secundarios
+
+```
+> rs.addArb("192.168.0.4:27004")
+> rs.status()
+```
+
+Dado que para este caso no se va a necesitar un árbitro vamos a eliminarlo de la siguiente forma
+
+```
+> rs.remove("192.168.0.4:27004")
+```
 
 ## Elección del primario
 
+## Recuperación de fallos
 
 ## Configuración de escritura
